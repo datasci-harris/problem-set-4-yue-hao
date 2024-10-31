@@ -62,9 +62,9 @@ include-before-body:
 
 ```{python}
 # Load the datasets
-df_2017 = pd.read_csv('D:/uchicago/24 fall/data/ps4/POS_File_Hospital_Non_Hospital_Facilities_Q4_2017.csv', low_memory = False)
-df_2018 = pd.read_csv('D:/uchicago/24 fall/data/ps4/POS_File_Hospital_Non_Hospital_Facilities_Q4_2018.csv', low_memory = False)
-df_2019 = pd.read_csv('D:/uchicago/24 fall/data/ps4/POS_File_Hospital_Non_Hospital_Facilities_Q4_2019.csv', low_memory = False)
+df_2017 = pd.read_csv('D:/uchicago/24 fall/data/ps4/POS_File_Hospital_Non_Hospital_Facilities_Q4_2017.csv', low_memory = False, encoding='ISO-8859-1')
+df_2018 = pd.read_csv('D:/uchicago/24 fall/data/ps4/POS_File_Hospital_Non_Hospital_Facilities_Q4_2018.csv', low_memory = False, encoding='ISO-8859-1')
+df_2019 = pd.read_csv('D:/uchicago/24 fall/data/ps4/POS_File_Hospital_Non_Hospital_Facilities_Q4_2019.csv', low_memory = False, encoding='ISO-8859-1')
 
 # Calculate the quantities for each year
 short_term_hos_2017 = df_2017[(df_2017['PRVDR_CTGRY_SBTYP_CD'] == 1) & (df_2017['PRVDR_CTGRY_CD'] == 1)]
@@ -107,48 +107,241 @@ plt.show()
     a.
     
     ```{python}
-    # Define the function to filter the unique hospital with valid CMS
+    # Define the function to filter unique hospitals with valid CMS Certification Numbers
     def filter_cms_hospitals(df):
-      short_term = short_term[short_term['PRVDR_NUM'].astype(str).str.len().isin(6, 10)]
-      return short_term
+        df['PRVDR_NUM'] = df['PRVDR_NUM'].astype(str)
+        short_term = df[
+          (df['PRVDR_NUM'].str.len().isin([6, 10])) &
+          (df['PRVDR_CTGRY_SBTYP_CD'] == 1) &
+          (df['PRVDR_CTGRY_CD'] == 1)
+        ]
+        return short_term
 
-    # Filter apply
+    # Apply the filter to each year’s data
     df_2016_4 = filter_cms_hospitals(df_2016)
     df_2017_4 = filter_cms_hospitals(df_2017)
     df_2018_4 = filter_cms_hospitals(df_2018)
     df_2019_4 = filter_cms_hospitals(df_2019)
-    
-    # Add year column
-    df_2016_4['Year'] = 2016
-    df_2017_4['Year'] = 2017
-    df_2018_4['Year'] = 2018
-    df_2019_4['Year'] = 2019
 
-    # Concat the dataframes
-    total_cms = pd.concat([df_2016_4, df_2017_4, df_2018_4, df_2019_4], ignore_index = True)
-    unique_hospital_counts = total_cms.groupby('Year')['PRVDR_NUM'].nunique()
+    # Check if data is present
+    print("2016:", df_2016_4.shape)
+    print("2017:", df_2017_4.shape)
+    print("2018:", df_2018_4.shape)
+    print("2019:", df_2019_4.shape)
 
-    # Plot
-    plt.figure(figsize = (10, 8))
-    unique_hospital_counts.plot(kind = 'bar', color = 'skyblue', edgecolor = 'red')
-    plt.title('Number of Unique Hospitals by CMS Certification Number Over Year')
-    plt.xlabel('Year')
-    plt.ylabel('Number of Unique Hospitals')
-    plt.grid(axis = 'y', linestyle = '--', alpha = 0.7)
-    plt.show()
+    # If data is present, proceed
+    if all([not df.empty for df in [df_2016_4, df_2017_4, df_2018_4, df_2019_4]]):
+        # Add Year column to each filtered DataFrame
+        df_2016_4['Year'] = 2016
+        df_2017_4['Year'] = 2017
+        df_2018_4['Year'] = 2018
+        df_2019_4['Year'] = 2019
 
+        # Concatenate the DataFrames
+        total_cms = pd.concat([df_2016_4, df_2017_4, df_2018_4, df_2019_4], ignore_index=True)
 
+        # Group by Year and count unique CMS Certification Numbers
+        unique_hospital_counts = total_cms.groupby('Year')['PRVDR_NUM'].nunique()
+
+        # Plot the number of unique hospitals by CMS Certification Number
+        plt.figure(figsize=(10, 8))
+        unique_hospital_counts.plot(kind='bar', color='skyblue', edgecolor='red')
+        plt.title('Number of Unique Hospitals by CMS Certification Number Over Year')
+        plt.xlabel('Year')
+        plt.ylabel('Number of Unique Hospitals')
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.show()
+    else:
+        print("No data found for one or more years after filtering.")
     ```
-    b.
+
+
+    b. According to the output, we can see that these two plots have no different, for years of 2016, 2017, 2018 and 2019, they all have the same quantities of unique hospitals with the quantities of hospital we have calculated in the last question.
 
 ## Identify hospital closures in POS file (15 pts) (*)
 
 1. 
+
+```{python}
+# Since we have defined the df_2016 and df_2019 before
+# Filter the active hospital in 2016
+active_2016 = df_2016[
+    (df_2016['PGM_TRMNTN_CD'] == 0) &
+    (df_2016['PRVDR_CTGRY_SBTYP_CD'] == 1) &
+    (df_2016['PRVDR_CTGRY_CD'] == 1)
+][['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD']].copy()
+
+active_2016['Year_Active'] = 2016
+
+# Combine 2017-2019 data and add Year column for each dataset
+def prepare_year_data(df, year):
+    """
+    Filters the dataframe for short-term hospitals and adds a Year column.
+    """
+    df_filtered = df[
+        (df['PRVDR_CTGRY_SBTYP_CD'] == 1) &
+        (df['PRVDR_CTGRY_CD'] == 1)
+    ].copy()
+    df_filtered['Year'] = year
+    return df_filtered[['PRVDR_NUM', 'PGM_TRMNTN_CD', 'TRMNTN_EXPRTN_DT', 'Year']]
+
+df_2017_21 = prepare_year_data(df_2017, 2017)
+df_2018_21 = prepare_year_data(df_2018, 2018)
+df_2019_21 = prepare_year_data(df_2019, 2019)
+
+# Concatenate data from 2017 to 2019
+all_years = pd.concat([df_2017_21, df_2018_21, df_2019_21], ignore_index=True)
+
+
+# Extract year from TRMNTN_EXPRTN_DT where available
+all_years['Closure_Year'] = pd.to_datetime(all_years['TRMNTN_EXPRTN_DT'], errors='coerce').dt.year
+all_years['Closure_Year'] = all_years['Closure_Year'].fillna(all_years['Year'])
+
+all_years_agg = all_years.groupby(['PRVDR_NUM', 'Year']).agg({
+    'PGM_TRMNTN_CD': 'max',
+    'Closure_Year': 'max'
+}).reset_index()
+
+# define the first year of closure
+closures = []
+
+for index, hospital in active_2016.iterrows():
+    prvd_num = hospital['PRVDR_NUM']
+    facility_name = hospital['FAC_NAME']
+    zip_code = hospital['ZIP_CD']
+    
+    hospital_records = all_years_agg[all_years_agg['PRVDR_NUM'] == prvd_num]
+    
+    closure_year = None
+    
+    for year in range(2017, 2020):
+        record = hospital_records[hospital_records['Year'] == year]
+        
+        if record.empty:
+            closure_year = year
+            break
+        elif record['PGM_TRMNTN_CD'].iloc[0] != 0:
+            closure_year = int(record['Closure_Year'].iloc[0])
+            break
+    
+    if closure_year:
+        closures.append({
+            'Facility_Name': facility_name,
+            'ZIP_Code': zip_code,
+            'Year_of_Closure': closure_year,
+            'PRVDR_NUM':prvd_num
+        })
+
+
+df_closures = pd.DataFrame(closures)
+quantity_closures = df_closures.shape[0]
+
+# display the total amount and list
+print(f"There will be {quantity_closures} of suspected hospital closures satisfy the definition")
+```
+
+
+
 2. 
+
+```{python}
+# Sort by list
+df_closures_sorted = df_closures.sort_values(by='Facility_Name')[['Facility_Name', 'Year_of_Closure']].head(10)
+print(df_closures_sorted)
+```
+
 3. 
     a.
+    
+    ```{python}
+    # Get active hospital for each year
+    def get_active_hospitals(df, year):
+      return df[
+        (df['PGM_TRMNTN_CD'] == 0) &
+        (df['PRVDR_CTGRY_SBTYP_CD'] == 1) &
+        (df['PRVDR_CTGRY_CD'] == 1)
+      ][['PRVDR_NUM', 'FAC_NAME', 'ZIP_CD']].copy()
+
+    
+    active_2016 = get_active_hospitals(df_2016, 2016)
+    active_2017 = get_active_hospitals(df_2017, 2017)
+    active_2018 = get_active_hospitals(df_2018, 2018)
+    active_2019 = get_active_hospitals(df_2019, 2019)
+
+    active_2016['Year'] = 2016
+    active_2017['Year'] = 2017
+    active_2018['Year'] = 2018
+    active_2019['Year'] = 2019
+
+    active_all_years = pd.concat([active_2016, active_2017, active_2018, active_2019], ignore_index=True)
+
+    # Calculate the number of active hospitals per ZIP code per year
+    active_counts = active_all_years.groupby(['ZIP_CD', 'Year']).agg(
+        Active_Hospitals=('PRVDR_NUM', 'nunique')
+    ).reset_index()
+
+
+    # Exclude the clousres in 2019
+    df_closures_excl_2019 = df_closures[df_closures['Year_of_Closure'] < 2019].copy()
+
+    # Merge closures with active_counts to get active hospital counts for closure year
+    closures_with_counts = df_closures_excl_2019.merge(
+        active_counts,
+        left_on=['ZIP_Code', 'Year_of_Closure'],
+        right_on=['ZIP_CD', 'Year'],
+        how='left'
+    ).rename(columns={'Active_Hospitals': 'Closure_Year_Active'})
+
+
+    # Shift the 'Year' to 'Year_of_Closure + 1' to get next year's count
+    closures_with_counts['Next_Year'] = closures_with_counts['Year_of_Closure'] + 1
+
+    closures_with_counts = closures_with_counts.merge(
+        active_counts,
+        left_on=['ZIP_Code', 'Next_Year'],
+        right_on=['ZIP_CD', 'Year'],
+        how='left'
+    ).rename(columns={'Active_Hospitals': 'Next_Year_Active'})
+
+    # Determine potential merger/acquisition
+    closures_with_counts['Potential_Merger_Acq'] = closures_with_counts['Next_Year_Active'] >= closures_with_counts['Closure_Year_Active']
+
+    # Number of potential mergers/acquisitions
+    num_potential_mergers = closures_with_counts['Potential_Merger_Acq'].sum()
+
+    # Create a list of PRVDR_NUMs that are potential mergers/acquisitions
+    potential_mergers_prvdr = closures_with_counts[closures_with_counts['Potential_Merger_Acq']]['PRVDR_NUM']
+
+    # Number of closures before removal
+    total_suspected_closures = df_closures.shape[0]
+
+    # Number of closures after removing potential mergers/acquisitions
+    df_closures_corrected = df_closures[~df_closures['PRVDR_NUM'].isin(potential_mergers_prvdr)].copy()
+
+    # Number of closures after correction
+    num_corrected_closures = df_closures_corrected.shape[0]
+
+    # Reporting the numbers
+    print(f"Number of suspected closures potentially due to mergers/acquisitions: {num_potential_mergers}")
+
+    ```
+
     b.
+
+    ```{python}
+    # Display
+    print(f"Number of actual suspected closures after correction: {num_corrected_closures}")
+    ```
+
     c.
+
+    ```{python}
+    df_closures_sorted_corrected = df_closures_corrected.sort_values(by='Facility_Name')[['Facility_Name', 'Year_of_Closure']].head(10)
+    print("\nFirst 10 corrected hospital closures sorted by name:")
+    print(df_closures_sorted_corrected)
+    ```
+
+
 
 ## Download Census zip code shapefile (10 pt) 
 
